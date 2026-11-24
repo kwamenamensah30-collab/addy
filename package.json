@@ -1,0 +1,12 @@
+{
+  "name": "addy",
+  "version": "1.0.0",
+  "description": "Field app for GIS teams: collect classified ground points (training samples) and ground-truth validation points, with login, offline use, sync and export.",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=22.5" },
+  "scripts": {
+    "start": "node --no-warnings=ExperimentalWarning server.js",
+    "cert": "node make-cert.js"
+  }
+}

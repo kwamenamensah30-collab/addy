@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta name="theme-color" content="#142700">
+<meta name="description" content="Addy: collect ground points and ground-truth validation points for GIS, online or offline.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Addy">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Addy · Ground points and ground truthing</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="64x64" href="favicon-64.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="vendor/leaflet.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<!-- One icon set for the whole app: 24px grid, 1.75 stroke, round joins. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01" stroke-width="2.6"/></symbol>
+    <symbol id="i-data" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="7.5" ry="2.8"/><path d="M4.5 5.5v6.5c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8V5.5"/><path d="M4.5 12v6.5c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8V12"/></symbol>
+    <symbol id="i-report" viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M7 16.5v-5M12 16.5V6M17 16.5v-8"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+    <symbol id="i-pin-plus" viewBox="0 0 24 24"><path d="M12 21.5s-7-6.1-7-11.5a7 7 0 0 1 14 0c0 5.4-7 11.5-7 11.5z"/><path d="M12 7v6M9 10h6"/></symbol>
+    <symbol id="i-locate" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3.5l8.5 4.5L12 12.5 3.5 8z"/><path d="M3.5 12.2L12 16.7l8.5-4.5"/><path d="M3.5 16.2L12 20.7l8.5-4.5"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5"/></symbol>
+    <symbol id="i-sync" viewBox="0 0 24 24"><path d="M19.5 10.5A7.5 7.5 0 0 0 6 7.2L4.5 9"/><path d="M4.5 4.5V9H9"/><path d="M4.5 13.5A7.5 7.5 0 0 0 18 16.8l1.5-1.8"/><path d="M19.5 19.5V15H15"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15.5V4M7.5 8.5L12 4l4.5 4.5"/><path d="M4.5 15v4.5h15V15"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11.5M7.5 11L12 15.5 16.5 11"/><path d="M4.5 15v4.5h15V15"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M3.5 8.5a2 2 0 0 1 2-2h2l1.6-2.2h5.8l1.6 2.2h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.8" r="3.4"/></symbol>
+    <symbol id="i-nearest" viewBox="0 0 24 24"><path d="M12 3l6.5 17L12 16.2 5.5 20z"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 4v11M8 7.5L12 3.5l4 4"/><path d="M6.5 11H5v9h14v-9h-1.5"/></symbol>
+    <symbol id="i-crosshair" viewBox="0 0 24 24"><path d="M12 3v6M12 15v6M3 12h6M15 12h6"/></symbol>
+    <symbol id="i-admin" viewBox="0 0 24 24"><path d="M12 2.8l7.5 3v5.6c0 4.6-3.2 8.6-7.5 9.8-4.3-1.2-7.5-5.2-7.5-9.8V5.8z"/><circle cx="12" cy="10" r="2.3"/><path d="M8.3 16c.7-1.7 2.1-2.7 3.7-2.7s3 1 3.7 2.7"/></symbol>
+    <symbol id="i-satellite" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.4"/><path d="M7.8 16.2a6 6 0 0 1 0-8.4M16.2 7.8a6 6 0 0 1 0 8.4M5 19a10 10 0 0 1 0-14M19 5a10 10 0 0 1 0 14"/></symbol>
+  </defs>
+</svg>
+
+<!-- ================= sign in ================= -->
+<div id="auth" class="authScreen">
+  <aside class="authBrand">
+    <img class="authLogo" src="brand/addy-logo-light.png" alt="Addy" width="600" height="514">
+    <div class="authPitch">
+      <h1>Field data collection and ground truthing</h1>
+      <ul>
+        <li>Collect classified ground points for training</li>
+        <li>Navigate to validation points and verify them</li>
+        <li>Works without signal; syncs when connected</li>
+      </ul>
+    </div>
+    <p class="authFine">Points are stored on your team's own server.</p>
+  </aside>
+  <main class="authMain">
+    <form class="authForm" id="authForm" autocomplete="on">
+      <h2 id="authHeading">Sign in</h2>
+      <p class="muted" id="authIntro">Sign in with the account your team admin gave you.</p>
+      <label class="field" id="authNameRow" hidden><span>Full name</span><input id="authName" autocomplete="name" maxlength="80"></label>
+      <label class="field"><span>Username</span><input id="authUser" autocomplete="username" required maxlength="40" autocapitalize="none" spellcheck="false"></label>
+      <label class="field"><span>Password</span><input id="authPass" type="password" autocomplete="current-password" required minlength="6"></label>
+      <label class="field" id="authPass2Row" hidden><span>Repeat password</span><input id="authPass2" type="password" autocomplete="new-password" minlength="6"></label>
+      <p class="err" id="authErr" role="alert"></p>
+      <button class="btn primary block" id="authBtn" type="submit">Sign in</button>
+      <p class="muted small" id="authFoot"></p>
+    </form>
+  </main>
+</div>
+
+<!-- ================= app bar ================= -->
+<header id="topbar">
+  <div class="brandMark" aria-hidden="true">
+    <img class="markOnly" src="brand/addy-mark-light.png" alt="" width="18" height="24">
+    <img class="wordmark" src="brand/addy-logo-light.png" alt="" width="64" height="55">
+  </div>
+  <button class="projBtn" id="projBtn" type="button" aria-label="Switch project">
+    <span class="projText"><small>Project</small><span id="projName">No project</span></span>
+    <svg class="ic sm"><use href="#i-chevron"/></svg>
+  </button>
+  <div class="modeSeg" role="tablist" aria-label="Mode">
+    <button type="button" role="tab" data-mode="collect" aria-pressed="true">Collect</button>
+    <button type="button" role="tab" data-mode="truth" aria-pressed="false">Ground truth</button>
+  </div>
+  <div class="barSpacer"></div>
+  <button class="syncChip" id="syncChip" type="button" title="Sync now"><span class="dot"></span><span id="syncTxt">—</span><svg class="ic sm"><use href="#i-sync"/></svg></button>
+  <button class="barIcon" id="adminBtn" type="button" hidden aria-label="Admin: create accounts" title="Admin: create accounts"><svg class="ic"><use href="#i-admin"/></svg></button>
+</header>
+
+<!-- ================= navigation rail (desktop) / bottom bar (phone) ================= -->
+<nav id="tools" aria-label="Sections">
+  <button class="tool" id="listBtn" type="button"><svg class="ic"><use href="#i-list"/></svg><span id="listLbl">Points</span></button>
+  <button class="tool" id="dataBtn" type="button"><svg class="ic"><use href="#i-data"/></svg><span>Data</span></button>
+  <button class="tool" id="reportNavBtn" type="button"><svg class="ic"><use href="#i-report"/></svg><span>Report</span></button>
+  <button class="tool" id="menuBtn" type="button"><svg class="ic"><use href="#i-settings"/></svg><span>Settings</span></button>
+</nav>
+
+<!-- ================= map ================= -->
+<div id="map" aria-label="Map"><div id="crosshair" aria-hidden="true" hidden></div></div>
+
+<div id="mapCtl" aria-label="Map controls">
+  <div class="ctlGroup zoomGroup">
+    <button type="button" id="zoomInBtn" aria-label="Zoom in" title="Zoom in"><svg class="ic"><use href="#i-plus"/></svg></button>
+    <button type="button" id="zoomOutBtn" aria-label="Zoom out" title="Zoom out"><svg class="ic"><use href="#i-minus"/></svg></button>
+  </div>
+  <div class="ctlGroup"><button type="button" id="layersBtn" aria-label="Map layers" title="Map layers"><svg class="ic"><use href="#i-layers"/></svg></button></div>
+  <div class="ctlGroup"><button type="button" id="gpsBtn" data-state="off" aria-label="Start GPS" title="Start GPS"><svg class="ic"><use href="#i-locate"/></svg></button></div>
+</div>
+
+<button class="fab" id="recBtn" type="button"><svg class="ic"><use href="#i-pin-plus"/></svg><span id="recLbl">Record</span></button>
+
+<!-- ground-truth navigation banner -->
+<section id="nav" data-band="far" aria-live="polite" hidden>
+  <div id="arrowWrap" aria-hidden="true">
+    <svg id="arrow" viewBox="0 0 48 48"><path d="M24 4 L38 40 L24 32.5 L10 40 Z"/></svg>
+  </div>
+  <div class="navMain">
+    <div class="tgtLine"><span id="tgtId">No target</span><span id="band">GPS off</span></div>
+    <div class="distLine"><span id="dist" class="num">—</span><span id="brg" class="num"></span></div>
+    <div class="routeInfo" id="routeInfo"></div>
+    <div class="navMeta"><span id="tgtMeta"></span></div>
+  </div>
+  <div class="navSide">
+    <button class="btn sm" id="nextBtn" type="button"><svg class="ic sm"><use href="#i-nearest"/></svg>Nearest</button>
+    <button class="btn sm ghost" id="travelBtn" type="button" title="Change travel mode">Walk</button>
+    <span class="num" id="eta"></span>
+    <span id="compassTag">North up</span>
+  </div>
+</section>
+
+<!-- ================= status bar ================= -->
+<footer id="statusbar">
+  <button type="button" class="sbCoords" id="coordBtn" title="Copy coordinates">
+    <span class="sbLabel" id="posLbl">Map centre</span>
+    <span class="num" id="posLL">—</span>
+    <span class="num sbUtm" id="posUTM"></span>
+  </button>
+  <span class="sbRight">
+    <span class="sbCount num" id="posCount"></span>
+    <span class="sbGps num" id="gpsBadge">GPS off</span>
+  </span>
+</footer>
+
+<!-- ================= record ================= -->
+<section class="sheet" id="recSheet" aria-labelledby="recTitle">
+  <div class="sheetHead"><h2 id="recTitle">Record point</h2><button class="iconBtn" data-close type="button" aria-label="Close"><svg class="ic"><use href="#i-x"/></svg></button></div>
+  <div class="sheetBody">
+    <div id="recTarget" class="tgtBox" hidden></div>
+
+    <section class="group">
+      <h3 class="groupTitle">Location</h3>
+      <div class="fixBox num" id="fixBox">Waiting for a GPS fix…</div>
+      <div class="btnGroup">
+        <button class="btn sm" id="useGpsBtn" type="button">Current GPS</button>
+        <button class="btn sm" id="avgBtn" type="button">Average fixes</button>
+        <button class="btn sm" id="useMapBtn" type="button">Map centre</button>
+      </div>
+    </section>
+
+    <section class="group" id="accessRow" hidden>
+      <h3 class="groupTitle">Access</h3>
+      <div class="seg" id="accessSeg" role="group" aria-label="Access">
+        <button type="button" data-v="reached" aria-pressed="true">Reached</button>
+        <button type="button" data-v="viewed">Seen from distance</button>
+        <button type="button" data-v="not reached">Not reached</button>
+      </div>
+    </section>
+
+    <section class="group">
+      <h3 class="groupTitle" id="clsLabel">Class on the ground</h3>
+      <div class="clsGrid" id="clsGrid" role="group"></div>
+    </section>
+
+    <section class="group">
+      <h3 class="groupTitle">Details</h3>
+      <div class="field"><span>Confidence</span>
+        <div class="seg" id="confSeg" role="group" aria-label="Confidence">
+          <button type="button" data-v="high">High</button><button type="button" data-v="medium">Medium</button><button type="button" data-v="low">Low</button>
+        </div></div>
+      <div class="twoCol">
+        <label class="field"><span>Point label</span><input id="recLabel" maxlength="60"></label>
+        <label class="field"><span>Homogeneous radius (m)</span><input id="recRadius" type="number" min="0" max="5000" inputmode="numeric" placeholder="Optional"></label>
+      </div>
+      <label class="field"><span>Notes</span><textarea id="recNotes" rows="3" maxlength="2000" placeholder="Canopy cover, crop type, disturbance, access…"></textarea></label>
+      <div class="field"><span>Photo</span>
+        <div class="photoRow">
+          <img id="recPhotoPrev" alt="Photo preview" hidden>
+          <label class="btn sm fileBtn"><svg class="ic sm"><use href="#i-camera"/></svg>Add photo<input id="recPhoto" type="file" accept="image/*" capture="environment"></label>
+          <button class="btn sm ghost danger" id="recPhotoDel" type="button" hidden>Remove</button>
+        </div></div>
+      <p class="muted small" id="recFoot">Saved on this device first, then sent to the server when there is signal.</p>
+    </section>
+  </div>
+  <div class="sheetFoot">
+    <button class="btn ghost danger" id="delBtn" type="button" hidden>Delete</button>
+    <span class="grow"></span>
+    <button class="btn" data-close type="button">Cancel</button>
+    <button class="btn primary" id="saveBtn" type="button">Save point</button>
+  </div>
+</section>
+
+<!-- ================= points / targets ================= -->
+<section class="sheet" id="listSheet" aria-labelledby="listTitle">
+  <div class="sheetHead"><h2 id="listTitle">Points</h2><span id="progress" class="muted small num"></span><button class="iconBtn" data-close type="button" aria-label="Close"><svg class="ic"><use href="#i-x"/></svg></button></div>
+  <div class="filters">
+    <select id="dsSel" aria-label="Validation dataset" hidden></select>
+    <input id="q" type="search" placeholder="Search label, class, notes" aria-label="Search">
+    <div class="filterRow">
+      <select id="kindSel" aria-label="Type">
+        <option value="">All types</option><option value="training">Training samples</option><option value="new">New points</option><option value="validation">Validation visits</option>
+      </select>
+      <select id="statusSel" aria-label="Status" hidden>
+        <option value="">All targets</option><option value="todo">Not visited</option><option value="done">Visited</option><option value="disagree">Disagrees with map</option><option value="unreached">Not reached</option>
+      </select>
+      <select id="clsSel" aria-label="Class"><option value="">All classes</option></select>
+    </div>
+  </div>
+  <div class="sheetBody flush"><div class="list" id="list"></div></div>
+</section>
+
+<!-- ================= data ================= -->
+<section class="sheet" id="dataSheet" aria-label="Data">
+  <div class="sheetHead"><h2>Data</h2><button class="iconBtn" data-close type="button" aria-label="Close"><svg class="ic"><use href="#i-x"/></svg></button></div>
+  <div class="sheetBody">
+    <section class="group">
+      <div class="groupHead"><h3 class="groupTitle">Validation datasets</h3>
+        <label class="btn sm fileBtn"><svg class="ic sm"><use href="#i-upload"/></svg>Upload<input id="importFile" type="file" accept=".csv,.txt,.tsv,.geojson,.json,.kml"></label></div>
+      <p class="muted small">Points to check in the field: CSV with lat/lon or UTM, GeoJSON or KML. Include the map's class for each point to get an accuracy assessment.</p>
+      <div id="dsList" class="list boxed"></div>
+    </section>
+
+    <section class="group">
+      <h3 class="groupTitle">Export</h3>
+      <div class="twoCol">
+        <label class="field"><span>Points</span>
+          <select id="expScope">
+            <option value="all">All points in project</option>
+            <option value="training">Training samples</option>
+            <option value="validation">Validation visits</option>
+            <option value="new">New points</option>
+            <option value="mine">My points only</option>
+          </select></label>
+        <label class="field"><span>Format</span>
+          <select id="expFmt">
+            <option value="csv">CSV</option>
+            <option value="geojson">GeoJSON</option>
+            <option value="kml">KML (Google Earth)</option>
+            <option value="gpx">GPX waypoints</option>
+          </select></label>
+      </div>
+      <label class="check"><input type="checkbox" id="expTargets"><span>Include validation targets not yet visited</span></label>
+      <label class="check"><input type="checkbox" id="expPhotos"><span>Embed photos (GeoJSON only)</span></label>
+      <div class="btnGroup end">
+        <button class="btn" id="shareBtn" type="button"><svg class="ic sm"><use href="#i-share"/></svg>Share</button>
+        <button class="btn primary" id="exportBtn" type="button"><svg class="ic sm"><use href="#i-download"/></svg>Download</button>
+      </div>
+      <p class="muted small" id="expNote"></p>
+    </section>
+
+    <section class="group">
+      <h3 class="groupTitle">GPS track</h3>
+      <p class="muted small" id="trackNote"></p>
+      <div class="btnGroup">
+        <button class="btn sm" id="trackExportBtn" type="button">Export GPX</button>
+        <button class="btn sm ghost danger" id="clearTrackBtn" type="button">Clear track</button>
+      </div>
+    </section>
+    <button class="linkBtn" id="reportBtn" type="button" hidden>Accuracy report</button>
+  </div>
+</section>
+
+<!-- ================= layers ================= -->
+<section class="sheet" id="layersSheet" aria-label="Map layers">
+  <div class="sheetHead"><h2>Map layers</h2><button class="iconBtn" data-close type="button" aria-label="Close"><svg class="ic"><use href="#i-x"/></svg></button></div>
+  <div class="sheetBody">
+    <section class="group">
+      <h3 class="groupTitle">Base map</h3>
+      <div class="radioList" id="baseSeg" role="radiogroup">
+        <button type="button" role="radio" data-v="osm"><span class="rdot"></span><span><b>Streets</b><small>OpenStreetMap</small></span></button>
+        <button type="button" role="radio" data-v="sat"><span class="rdot"></span><span><b>Satellite</b><small>Esri World Imagery</small></span></button>
+        <button type="button" role="radio" data-v="hyb"><span class="rdot"></span><span><b>Satellite with labels</b><small>Imagery plus places and boundaries</small></span></button>
+        <button type="button" role="radio" data-v="topo"><span class="rdot"></span><span><b>Topographic</b><small>OpenTopoMap contours and relief</small></span></button>
+        <button type="button" role="radio" data-v="none"><span class="rdot"></span><span><b>None</b><small>Points and reference layers only</small></span></button>
+      </div>
+      <p class="muted small">Base maps need a connection. Satellite and topographic areas you have viewed stay available offline; the Streets map does not (OpenStreetMap does not allow offline copies of its tiles). Offline, turn on <b>Show saved roads</b> below.</p>
+    </section>
+    <section class="group">
+      <h3 class="groupTitle">Display</h3>
+      <label class="switchRow"><span>Point labels<small>Shown at zoom 16 and closer</small></span><input type="checkbox" class="switch" id="optLabels" checked></label>
+      <label class="switchRow"><span>My GPS track</span><input type="checkbox" class="switch" id="optTrack" checked></label>
+    </section>
+    <section class="group">
+      <div class="groupHead"><h3 class="groupTitle">Roads for routing</h3>
+        <span class="btnGroup tight">
+          <label class="btn sm fileBtn" title="Import a road file: GeoJSON, KML, .osm or Overpass JSON"><svg class="ic sm"><use href="#i-upload"/></svg>Import<input id="roadsFile" type="file" accept=".geojson,.json,.kml,.osm"></label>
+          <button class="btn sm" id="roadsDlBtn" type="button"><svg class="ic sm"><use href="#i-download"/></svg><span>Download</span></button>
+        </span></div>
+      <p class="muted small" id="roadsNote"></p>
+      <label class="switchRow"><span>Show saved roads<small>Draws the routing network; handy offline when the base map is not cached</small></span><input type="checkbox" class="switch" id="optRoads"></label>
+    </section>
+    <section class="group">
+      <div class="groupHead"><h3 class="groupTitle">Reference layers</h3>
+        <label class="btn sm fileBtn"><svg class="ic sm"><use href="#i-plus"/></svg>Add<input id="overlayFile" type="file" accept=".geojson,.json,.kml"></label></div>
+      <p class="muted small">Study areas, plot boundaries or map footprints (GeoJSON or KML, WGS84). Kept on this device only.</p>
+      <div id="ovList" class="list boxed"></div>
+    </section>
+  </div>
+</section>
+
+<!-- ================= import mapping ================= -->
+<section class="sheet" id="mapSheet" aria-label="Import points">
+  <div class="sheetHead"><h2>Import validation points</h2><button class="iconBtn" data-close type="button" aria-label="Close"><svg class="ic"><use href="#i-x"/></svg></button></div>
+  <div class="sheetBody">
+    <p class="muted small" id="impSummary"></p>
+    <div class="tableWrap"><table class="mini" id="impPreview"></table></div>
+    <section class="group">
+      <label class="field"><span>Dataset name</span><input id="impName" maxlength="120"></label>
+      <div class="twoCol">
+        <label class="field"><span>Point ID column</span><select id="impId"></select></label>
+        <label class="field"><span>Map class column</span><select id="impCls"></select></label>
+      </div>
+    </section>
+    <section class="group">
+      <h3 class="groupTitle">Coordinates</h3>
+      <label class="field"><span>Coordinate system</span>
+        <select id="impCrs"><option value="wgs84">Latitude / longitude, decimal degrees (WGS84)</option><option value="utm">UTM easting / northing, metres (WGS84)</option></select></label>
+      <div class="twoCol" id="impLL">
+        <label class="field"><span>Latitude column</span><select id="impLat"></select></label>
+        <label class="field"><span>Longitude column</span><select id="impLon"></select></label>
+      </div>
+      <div id="impUTM" hidden>
+        <div class="twoCol">
+          <label class="field"><span>Easting column</span><select id="impE"></select></label>
+          <label class="field"><span>Northing column</span><select id="impN"></select></label>
+        </div>
+        <div class="twoCol">
+          <label class="field"><span>UTM zone</span><input id="impZone" type="number" min="1" max="60" value="30"></label>
+          <label class="field"><span>Hemisphere</span><select id="impHemi"><option value="N">North</option><option value="S">South</option></select></label>
+        </div>
+        <p class="muted small">Ghana is WGS 84 / UTM 30N (EPSG:32630). Reproject Ghana National Grid data to WGS84 first.</p>
+      </div>
+    </section>
+    <p class="err" id="impErr" role="alert"></p>
+  </div>
+  <div class="sheetFoot"><span class="grow"></span><button class="btn" data-close type="button">Cancel</button><button class="btn primary" id="impGo" type="button">Import points</button></div>
+</section>
+
+<!-- ================= report ================= -->
+<section class="sheet wide" id="reportSheet" aria-label="Accuracy report">
+  <div class="sheetHead"><h2>Report</h2><button class="iconBtn" data-close type="button" aria-label="Close"><svg class="ic"><use href="#i-x"/></svg></button></div>
+  <div class="sheetBody" id="reportBody"></div>
+</section>
+
+<!-- ================= settings ================= -->
+<section class="sheet" id="menuSheet" aria-label="Settings">
+  <div class="sheetHead"><h2>Settings</h2><button class="iconBtn" data-close type="button" aria-label="Close"><svg class="ic"><use href="#i-x"/></svg></button></div>
+  <div class="sheetBody">
+    <section class="group">
+      <div class="who" id="whoBox"></div>
+      <div class="btnGroup">
+        <button class="btn sm" id="teamBtn" type="button" hidden>Manage team</button>
+        <button class="btn sm" id="pwBtn" type="button">Change password</button>
+        <button class="btn sm ghost danger" id="logoutBtn" type="button">Sign out</button>
+      </div>
+    </section>
+    <section class="group">
+      <div class="groupHead"><h3 class="groupTitle">Projects</h3>
+        <span class="btnGroup tight" id="projAdmin"><button class="btn sm" id="editProjBtn" type="button">Edit</button><button class="btn sm" id="newProjBtn" type="button"><svg class="ic sm"><use href="#i-plus"/></svg>New</button></span></div>
+      <div class="list boxed" id="projList"></div>
+    </section>
+    <section class="group">
+      <h3 class="groupTitle">Navigation and GPS</h3>
+      <label class="switchRow"><span>Travel mode<small>Used for road routes and arrival times. Off-road stretches are always walked.</small></span><select id="optTravel"><option value="walk">Walking</option><option value="moto">Motorbike</option><option value="car">Car / 4×4</option></select></label>
+      <label class="switchRow"><span>Online routing<small>Only used when no roads are saved for the area. Sends your position and the target to routing.openstreetmap.de.</small></span><input type="checkbox" class="switch" id="optOnline"></label>
+      <label class="switchRow"><span>Sound and vibration<small>At 200 m, 50 m and on arrival</small></span><input type="checkbox" class="switch" id="optAlert" checked></label>
+      <label class="switchRow"><span>Arrival distance<small>A target counts as reached within this distance</small></span><select id="optArrive"><option value="10">10 m</option><option value="20" selected>20 m</option><option value="30">30 m</option><option value="50">50 m</option></select></label>
+      <label class="switchRow"><span>Fixes to average<small>Used by "Average fixes"</small></span><select id="optAvgN"><option>5</option><option selected>10</option><option>20</option><option>30</option><option>60</option></select></label>
+      <label class="switchRow"><span>Keep screen on<small>While Addy is open</small></span><input type="checkbox" class="switch" id="optWake"></label>
+      <div class="btnGroup"><button class="btn sm" id="compassBtn" type="button">Turn on compass</button></div>
+    </section>
+    <section class="group">
+      <h3 class="groupTitle">About</h3>
+      <div class="aboutLogo">
+        <picture><source srcset="brand/addy-logo-light.png" media="(prefers-color-scheme: dark)"><img src="brand/addy-logo.png" alt="Addy" width="600" height="514"></picture>
+        <span class="muted small" id="appVersion"></span>
+      </div>
+      <p class="muted small">Every point is kept on this device and sent to your team server when there is signal. Coordinates are WGS84 (EPSG:4326); UTM is shown and exported alongside. Map data © OpenStreetMap contributors; imagery © Esri, Maxar, Earthstar Geographics; OpenTopoMap (CC-BY-SA).</p>
+    </section>
+  </div>
+</section>
+
+<!-- ================= project editor ================= -->
+<section class="sheet" id="projSheet" aria-labelledby="projSheetTitle">
+  <div class="sheetHead"><h2 id="projSheetTitle">New project</h2><button class="iconBtn" data-close type="button" aria-label="Close"><svg class="ic"><use href="#i-x"/></svg></button></div>
+  <div class="sheetBody">
+    <section class="group">
+      <label class="field"><span>Project name</span><input id="pName" maxlength="120" placeholder="e.g. Atewa LULC 2026 validation"></label>
+      <label class="field"><span>Description</span><textarea id="pDesc" rows="2" maxlength="2000" placeholder="Study area, imagery date, sampling design"></textarea></label>
+    </section>
+    <section class="group">
+      <h3 class="groupTitle">Classes</h3>
+      <label class="field"><span>Start from</span><select id="pPreset"></select></label>
+      <label class="field"><span>One per line: code, name, #colour</span><textarea id="pClasses" rows="9" class="mono" spellcheck="false"></textarea></label>
+      <div class="swatches" id="pSwatches"></div>
+      <p class="muted small">Use the same integer codes as your classification so exports and the accuracy report line up. Renaming a class does not change points already saved.</p>
+      <label class="check" id="pArchRow" hidden><input type="checkbox" id="pArchived"><span>Archived (hidden from collectors)</span></label>
+    </section>
+    <p class="err" id="pErr" role="alert"></p>
+  </div>
+  <div class="sheetFoot"><span class="grow"></span><button class="btn" data-close type="button">Cancel</button><button class="btn primary" id="pSave" type="button">Save project</button></div>
+</section>
+
+<!-- ================= team ================= -->
+<section class="sheet" id="teamSheet" aria-labelledby="teamTitle">
+  <div class="sheetHead"><h2 id="teamTitle">Accounts</h2><button class="iconBtn" data-close type="button" aria-label="Close"><svg class="ic"><use href="#i-x"/></svg></button></div>
+  <div class="sheetBody">
+    <section class="group" id="createAccount">
+      <h3 class="groupTitle">Create account</h3>
+      <div class="twoCol">
+        <label class="field"><span>Full name</span><input id="tName" maxlength="80" autocomplete="off"></label>
+        <label class="field"><span>Username</span><input id="tUser" maxlength="40" autocapitalize="none" spellcheck="false" autocomplete="off" placeholder="letters, numbers, . _ -"></label>
+      </div>
+      <div class="field"><span>Temporary password</span>
+        <div class="inputRow"><input id="tPass" type="text" minlength="6" autocomplete="off" spellcheck="false" placeholder="At least 6 characters"><button class="btn sm" id="tGen" type="button">Generate</button></div></div>
+      <div class="field"><span>Role</span>
+        <div class="roleList" id="tRoleList" role="radiogroup" aria-label="Role">
+          <button type="button" role="radio" data-v="collector"><span class="rdot"></span><span><b>Collector</b><small>Records points and ground-truth visits; edits only their own points</small></span></button>
+          <button type="button" role="radio" data-v="manager"><span class="rdot"></span><span><b>Manager</b><small>Also creates projects, uploads validation points and edits anyone's points</small></span></button>
+          <button type="button" role="radio" data-v="admin"><span class="rdot"></span><span><b>Admin</b><small>Full access, including creating accounts and resetting passwords</small></span></button>
+        </div>
+        <select id="tRole" hidden><option value="collector">Collector</option><option value="manager">Manager</option><option value="admin">Admin</option></select></div>
+      <p class="err" id="tErr" role="alert"></p>
+      <div class="btnGroup end"><button class="btn primary" id="tAdd" type="button">Create account</button></div>
+    </section>
+    <section class="group">
+      <h3 class="groupTitle">Team</h3>
+      <div class="list boxed" id="teamList"></div>
+    </section>
+  </div>
+</section>
+
+<!-- ================= dialog ================= -->
+<div id="dlg" class="modal" hidden>
+  <form class="modalCard" id="dlgForm">
+    <h2 id="dlgTitle"></h2>
+    <p class="muted" id="dlgText"></p>
+    <div id="dlgFields" class="fields"></div>
+    <p class="err" id="dlgErr" role="alert"></p>
+    <div class="btnGroup end"><button class="btn" id="dlgCancel" type="button">Cancel</button><button class="btn primary" id="dlgOk" type="submit">OK</button></div>
+  </form>
+</div>
+
+<div id="sheetScrim" data-close></div>
+<div id="toast" role="status"></div>
+
+<script src="vendor/leaflet.js"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

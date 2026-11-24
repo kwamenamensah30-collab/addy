@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Team database and local HTTPS certificates (private, machine-specific)
+data/
+certs/
+*.db
+*.db-shm
+*.db-wal
+*.pem
+
+# Older standalone app and source artwork (not used by Addy)
+ADDY. software/
+
+# Environment and logs
+.env
+.env.*
+*.log
+npm-debug.log*
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
