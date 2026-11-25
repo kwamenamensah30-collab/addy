@@ -9,7 +9,7 @@ Everything is saved on the phone first and syncs to your team server when there 
 
 ## Start it
 
-You need Node.js 22.5 or newer (this computer has v24). There is nothing to install.
+You need Node.js 22.5 or newer (this computer has v24). Running it on one computer needs nothing installed (it uses a local SQLite file). To use a PostgreSQL database such as Neon, run `npm install` once.
 
 - Double-click **`Start Addy.bat`**, or run `npm start` in this folder.
 - Open http://localhost:8080. On first run you create the **admin** account.
@@ -26,7 +26,7 @@ Browsers only allow GPS on `https://` pages or on `localhost`. To use phones on 
 2. Restart the server. It prints addresses such as `https://192.168.1.20:8443`.
 3. On each phone, open that address, accept the browser's certificate warning once, then use **Add to Home screen**. The app then opens full screen and works offline.
 
-For teams spread across sites, host it online, for example on Render as a Node web service with the start command `npm start` and a persistent disk mounted at `/data`, with the environment variable `DATA_DIR=/data`. The host then provides HTTPS.
+For teams spread across sites, host it online. The tested setup is **Render** (Node web service, build command `npm install`, start command `npm start`, environment variable `NODE_VERSION=24`) with a **Neon** PostgreSQL database: set `DATABASE_URL` to Neon's connection string. The host then provides HTTPS. Create the admin account as soon as the first deploy is live, because whoever opens a new server first becomes admin.
 
 ## Field workflow
 
@@ -63,12 +63,13 @@ For teams spread across sites, host it online, for example on Render as a Node w
 
 ## Data and backup
 
-All team data is stored in `data/addy.db`, a single SQLite file. To back up, copy this file while the server is stopped. Each phone also keeps its own copy until the data is synced.
+If `DATABASE_URL` is set, all team data is stored in that PostgreSQL database (for Neon, back up with its restore points/branches or `pg_dump`). Otherwise it is stored in `data/addy.db`, a single SQLite file (or in `DATA_DIR` if set); to back up, copy this file while the server is stopped. Photos are stored inside the points, at about 200 KB each, so they make up most of the database size. Each phone also keeps its own copy until the data is synced.
 
 ## Files
 
 ```
-server.js            accounts, projects, sync API, static files (no dependencies)
+server.js            accounts, projects, sync API, static files
+database.js          storage: PostgreSQL when DATABASE_URL is set, otherwise SQLite
 make-cert.js         self-signed HTTPS certificate for phones on Wi-Fi
 public/index.html    app screens
 public/app.css       styles (light and dark)
