@@ -4,7 +4,7 @@
 // OpenStreetMap's own tiles (tile.openstreetmap.org) are NOT cached here: their usage policy forbids offline
 // and bulk caching, so those requests go straight to the network and the browser's normal HTTP cache.
 // TILES is v2: activating this version deletes the v1 tile cache, which could hold "Access blocked" images.
-const APP = 'addy-app-v6', TILES = 'addy-tiles-v2', MAX_TILES = 4000;
+const APP = 'addy-app-v7', TILES = 'addy-tiles-v2', MAX_TILES = 4000;
 const FILES = ['./', 'index.html', 'app.css', 'js/app.js', 'js/geo.js', 'js/io.js', 'js/db.js', 'js/presets.js', 'js/route.js',
   'vendor/leaflet.js', 'vendor/leaflet.css', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png',
   'apple-touch-icon.png', 'favicon-32.png', 'favicon-64.png', 'brand/addy-logo.png', 'brand/addy-logo-light.png', 'brand/addy-mark.png', 'brand/addy-mark-light.png'];

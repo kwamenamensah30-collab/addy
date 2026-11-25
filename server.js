@@ -17,7 +17,9 @@ const PUBLIC = path.join(ROOT, 'public');
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, 'data');
 const PORT = Number(process.env.PORT) || 8080;
 const HTTPS_PORT = Number(process.env.HTTPS_PORT) || 8443;
-const SESSION_DAYS = 30;
+const SESSION_DAYS = 30;          // "Keep me signed in"
+const SHORT_SESSION_HOURS = 12;   // without it: a browser-session cookie, and the server forgets it after 12 h
+const COOKIE = 'addy_session';
 const MAX_BODY = 40 * 1024 * 1024; // photos travel inside sync bodies
 
 const db = await openDatabase({ url: process.env.DATABASE_URL, dataDir: DATA_DIR });
@@ -45,15 +47,42 @@ function checkPassword(pw, stored) {
   return want.length === h.length && crypto.timingSafeEqual(h, want);
 }
 const ROLES = ['admin', 'manager', 'collector'];
-const publicUser = u => u && { id: u.id, username: u.username, name: u.name, role: u.role, active: !!u.active, created_at: u.created_at };
+const publicUser = u => u && { id: u.id, username: u.username, name: u.name, role: u.role, active: !!u.active, created_at: u.created_at, last_login: u.last_login || null, must_change: !!u.must_change };
 function validUsername(s) { return typeof s === 'string' && /^[A-Za-z0-9._-]{2,40}$/.test(s); }
 function validPassword(s) { return typeof s === 'string' && s.length >= 6 && s.length <= 200; }
 function cleanStr(s, max = 500) { return typeof s === 'string' ? s.trim().slice(0, max) : ''; }
-async function newSession(userId) {
+// ---------- cookies ----------
+// The session lives in an HttpOnly cookie, so page scripts never see the token.
+// SameSite=Lax plus the X-Addy header check in handler() keep other sites from using it.
+function parseCookies(req) {
+  const out = {};
+  for (const part of String(req.headers.cookie || '').split(';')) {
+    const i = part.indexOf('=');
+    if (i > 0) { const k = part.slice(0, i).trim(); if (k) { try { out[k] = decodeURIComponent(part.slice(i + 1).trim()); } catch { /* skip malformed */ } } }
+  }
+  return out;
+}
+const isSecure = req => !!req.socket.encrypted || String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https';
+function sessionCookie(req, token, remember) {
+  const parts = [`${COOKIE}=${token}`, 'Path=/', 'HttpOnly', 'SameSite=Lax'];
+  if (remember) parts.push(`Max-Age=${SESSION_DAYS * 86400}`);
+  if (isSecure(req)) parts.push('Secure');
+  return parts.join('; ');
+}
+const clearCookie = req => `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${isSecure(req) ? '; Secure' : ''}`;
+
+async function newSession(userId, remember = true) {
   const token = crypto.randomBytes(32).toString('base64url');
-  await db.run(`INSERT INTO sessions(token_hash, user_id, expires_at) VALUES(?, ?, ?)`, sha256(token), userId, now() + SESSION_DAYS * 864e5);
+  const life = remember ? SESSION_DAYS * 864e5 : SHORT_SESSION_HOURS * 36e5;
+  await db.run(`INSERT INTO sessions(token_hash, user_id, expires_at) VALUES(?, ?, ?)`, sha256(token), userId, now() + life);
   await db.run(`DELETE FROM sessions WHERE expires_at < ?`, now());
+  await db.run(`UPDATE users SET last_login = ? WHERE id = ?`, iso(), userId);
   return token;
+}
+async function signIn(ctx, u, remember) {
+  const token = await newSession(u.id, remember);
+  ctx.setCookie(sessionCookie(ctx.req, token, remember));
+  return { user: publicUser(await userById(u.id)) };
 }
 function cleanClasses(list) {
   if (!Array.isArray(list)) return null;
@@ -69,9 +98,14 @@ function cleanClasses(list) {
   }
   return out.length ? out : null;
 }
-function projectRow(p) {
-  return p && { id: p.id, name: p.name, description: p.description, classes: JSON.parse(p.classes), created_by: p.created_by, created_at: p.created_at, updated_at: p.updated_at, archived: !!p.archived };
+function projectRow(p, extra) {
+  return p && {
+    id: p.id, name: p.name, description: p.description, classes: JSON.parse(p.classes), created_by: p.created_by, created_at: p.created_at, updated_at: p.updated_at, archived: !!p.archived,
+    ...(extra || {}),
+  };
 }
+// admins and managers edit any project; anyone else edits the projects they created
+const canEditProject = (user, p) => user.role !== 'collector' || p.created_by === user.id;
 const userCount = async () => (await db.get(`SELECT COUNT(*) AS n FROM users`)).n;
 const userById = id => db.get(`SELECT * FROM users WHERE id = ?`, id);
 // usernames are ASCII (see validUsername), so lower() matches them case-insensitively in both databases
@@ -112,12 +146,19 @@ function readBody(req) {
   });
 }
 
+// The session token comes from the cookie. Older app versions sent it as a Bearer header;
+// that still works, and the reply moves the token into a cookie so the app can drop its copy.
+function sessionToken(req) {
+  const c = parseCookies(req)[COOKIE];
+  if (c) return { token: c, via: 'cookie' };
+  const m = /^Bearer\s+(.+)$/.exec(req.headers.authorization || '');
+  return m ? { token: m[1], via: 'bearer' } : null;
+}
 async function authUser(req) {
-  const h = req.headers.authorization || '';
-  const m = /^Bearer\s+(.+)$/.exec(h);
-  if (!m) return null;
-  const row = await db.get(`SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ? AND u.active = 1`, sha256(m[1]), now());
-  return row || null;
+  const t = sessionToken(req);
+  if (!t) return null;
+  const row = await db.get(`SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ? AND u.active = 1`, sha256(t.token), now());
+  return row ? { user: row, ...t } : null;
 }
 
 // ---------- API ----------
@@ -129,37 +170,44 @@ route('GET', '/api/status', async () => ({
   needsSetup: (await userCount()) === 0,
 }), { public: true });
 
-route('POST', '/api/setup', async ({ body }) => {
+route('POST', '/api/setup', async ctx => {
+  const { body } = ctx;
   need((await userCount()) === 0, 409, 'Setup has already been done. Sign in instead.');
   need(validUsername(body.username), 400, 'Username: 2–40 letters, numbers, dot, dash or underscore.');
   need(validPassword(body.password), 400, 'Password must be at least 6 characters.');
   const name = cleanStr(body.name, 80) || body.username;
   const user = await db.get(`INSERT INTO users(username, name, role, pass, created_at) VALUES(?, ?, 'admin', ?, ?) RETURNING *`, body.username, name, hashPassword(body.password), iso());
-  return { token: await newSession(user.id), user: publicUser(user) };
+  return signIn(ctx, user, body.remember !== false);
 }, { public: true });
 
-route('POST', '/api/login', async ({ body, req }) => {
+route('POST', '/api/login', async ctx => {
+  const { body, req } = ctx;
   const key = (req.socket.remoteAddress || '') + '|' + String(body.username || '').toLowerCase();
   need(!throttled(key), 429, 'Too many failed attempts. Wait 15 minutes and try again.');
   const u = await userByName(String(body.username || ''));
   if (!u || !u.active || !checkPassword(String(body.password || ''), u.pass)) { noteFail(key); throw new HttpError(401, 'Wrong username or password.'); }
   fails.delete(key);
-  return { token: await newSession(u.id), user: publicUser(u) };
+  return signIn(ctx, u, body.remember !== false);
 }, { public: true });
 
-route('POST', '/api/logout', async ({ req }) => {
-  const m = /^Bearer\s+(.+)$/.exec(req.headers.authorization || '');
-  if (m) await db.run(`DELETE FROM sessions WHERE token_hash = ?`, sha256(m[1]));
+route('POST', '/api/logout', async ({ req, setCookie }) => {
+  const t = sessionToken(req);
+  if (t) await db.run(`DELETE FROM sessions WHERE token_hash = ?`, sha256(t.token));
+  setCookie(clearCookie(req));
   return { ok: true };
-});
+}, { public: true });
 
 route('GET', '/api/me', ({ user }) => ({ user: publicUser(user) }));
 
-route('POST', '/api/me/password', async ({ user, body }) => {
+route('POST', '/api/me/password', async ({ user, body, req }) => {
   need(checkPassword(String(body.current || ''), user.pass), 400, 'Current password is wrong.');
   need(validPassword(body.next), 400, 'New password must be at least 6 characters.');
-  await db.run(`UPDATE users SET pass = ? WHERE id = ?`, hashPassword(body.next), user.id);
-  return { ok: true };
+  need(body.next !== body.current, 400, 'Choose a password different from the current one.');
+  await db.run(`UPDATE users SET pass = ?, must_change = 0 WHERE id = ?`, hashPassword(body.next), user.id);
+  // keep this device signed in, sign out everywhere else
+  const t = sessionToken(req);
+  await db.run(`DELETE FROM sessions WHERE user_id = ? AND token_hash != ?`, user.id, t ? sha256(t.token) : '');
+  return { ok: true, user: publicUser(await userById(user.id)) };
 });
 
 route('GET', '/api/users', async ({ user }) => {
@@ -173,7 +221,8 @@ route('POST', '/api/users', async ({ user, body }) => {
   need(validPassword(body.password), 400, 'Password must be at least 6 characters.');
   need(ROLES.includes(body.role), 400, 'Role must be admin, manager or collector.');
   need(!(await userByName(body.username)), 409, 'That username is taken.');
-  const created = await db.get(`INSERT INTO users(username, name, role, pass, created_at) VALUES(?, ?, ?, ?, ?) RETURNING *`,
+  // must_change: they choose their own password the first time they sign in
+  const created = await db.get(`INSERT INTO users(username, name, role, pass, created_at, must_change) VALUES(?, ?, ?, ?, ?, 1) RETURNING *`,
     body.username, cleanStr(body.name, 80) || body.username, body.role, hashPassword(body.password), iso());
   return { user: publicUser(created) };
 });
@@ -196,18 +245,35 @@ route('PATCH', '/api/users/:id', async ({ user, body, params }) => {
   if (body.name !== undefined) await db.run(`UPDATE users SET name = ? WHERE id = ?`, cleanStr(body.name, 80) || target.username, target.id);
   if (body.password !== undefined) {
     need(validPassword(body.password), 400, 'Password must be at least 6 characters.');
-    await db.run(`UPDATE users SET pass = ? WHERE id = ?`, hashPassword(body.password), target.id);
+    await db.run(`UPDATE users SET pass = ?, must_change = ? WHERE id = ?`, hashPassword(body.password), target.id === user.id ? 0 : 1, target.id);
     await db.run(`DELETE FROM sessions WHERE user_id = ?`, target.id);
   }
   return { user: publicUser(await userById(target.id)) };
 });
 
-route('GET', '/api/projects', async () => ({
-  projects: (await db.all(`SELECT * FROM projects ORDER BY archived, lower(name)`)).map(projectRow),
-}));
+// Every project with a few figures for the project cards.
+// Collectors see archived projects only if they created them.
+route('GET', '/api/projects', async ({ user }) => {
+  const blank = () => ({ points: 0, mine: 0, people: 0, datasets: 0, last_activity: null });
+  const stats = new Map();
+  const pts = await db.all(`SELECT project_id, COUNT(*) AS n, COUNT(DISTINCT user_id) AS people,
+      SUM(CASE WHEN user_id = ? THEN 1 ELSE 0 END) AS mine, MAX(updated_at) AS last
+    FROM points WHERE deleted = 0 GROUP BY project_id`, user.id);
+  for (const r of pts) stats.set(r.project_id, { ...blank(), points: Number(r.n), people: Number(r.people), mine: Number(r.mine || 0), last_activity: r.last ? Number(r.last) : null });
+  for (const r of await db.all(`SELECT project_id, COUNT(*) AS n FROM datasets WHERE deleted = 0 GROUP BY project_id`)) {
+    const s = stats.get(r.project_id) || blank(); s.datasets = Number(r.n); stats.set(r.project_id, s);
+  }
+  const names = new Map((await db.all(`SELECT id, name FROM users`)).map(u => [u.id, u.name]));
+  const rows = await db.all(`SELECT * FROM projects ORDER BY archived, lower(name)`);
+  return {
+    projects: rows
+      .filter(p => !p.archived || canEditProject(user, p))
+      .map(p => projectRow(p, { stats: stats.get(p.id) || blank(), created_by_name: names.get(p.created_by) || null, can_edit: canEditProject(user, p) })),
+  };
+});
 
+// Anyone signed in can start a project; they can then edit it.
 route('POST', '/api/projects', async ({ user, body }) => {
-  need(user.role !== 'collector', 403, 'Only admins and managers can create projects.');
   const name = cleanStr(body.name, 120);
   need(name, 400, 'Give the project a name.');
   const classes = cleanClasses(body.classes);
@@ -219,9 +285,9 @@ route('POST', '/api/projects', async ({ user, body }) => {
 });
 
 route('PATCH', '/api/projects/:id', async ({ user, body, params }) => {
-  need(user.role !== 'collector', 403, 'Only admins and managers can edit projects.');
   const p = await projectById(params.id);
   need(p, 404, 'No such project.');
+  need(canEditProject(user, p), 403, 'Only the person who created this project, a manager or an admin can edit it.');
   const name = body.name !== undefined ? cleanStr(body.name, 120) : p.name;
   need(name, 400, 'Give the project a name.');
   const classes = body.classes !== undefined ? cleanClasses(body.classes) : JSON.parse(p.classes);
@@ -328,8 +394,11 @@ async function handler(req, res) {
     if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); return res.end(); }
     return serveStatic(req, res, url.pathname);
   }
+  const cookies = [];
   const send = (status, obj) => {
-    res.writeHead(status, { ...SECURITY_HEADERS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    const h = { ...SECURITY_HEADERS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
+    if (cookies.length) h['Set-Cookie'] = cookies;
+    res.writeHead(status, h);
     res.end(JSON.stringify(obj));
   };
   try {
@@ -337,10 +406,15 @@ async function handler(req, res) {
       if (r.method !== req.method) continue;
       const m = r.re.exec(url.pathname);
       if (!m) continue;
-      const user = await authUser(req);
+      // Other sites cannot add a custom header to a cross-site request without CORS, which this server never allows,
+      // so requiring it stops them making changes with the visitor's cookie. Bearer requests carry no cookie risk.
+      if (req.method !== 'GET' && !req.headers.authorization) need(req.headers['x-addy'] === '1', 403, 'Request refused. Reload the page and try again.');
+      const auth = await authUser(req);
+      const user = auth && auth.user;
       if (!r.opts.public && !user) throw new HttpError(401, 'Please sign in again.');
+      if (auth && auth.via === 'bearer') cookies.push(sessionCookie(req, auth.token, true));
       const body = req.method === 'GET' ? {} : await readBody(req);
-      return send(200, await r.fn({ req, body, user, params: m.groups || {}, query: url.searchParams }));
+      return send(200, await r.fn({ req, body, user, params: m.groups || {}, query: url.searchParams, setCookie: c => cookies.push(c) }));
     }
     send(404, { error: 'Unknown API route' });
   } catch (e) {

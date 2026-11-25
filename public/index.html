@@ -41,36 +41,108 @@
     <symbol id="i-crosshair" viewBox="0 0 24 24"><path d="M12 3v6M12 15v6M3 12h6M15 12h6"/></symbol>
     <symbol id="i-admin" viewBox="0 0 24 24"><path d="M12 2.8l7.5 3v5.6c0 4.6-3.2 8.6-7.5 9.8-4.3-1.2-7.5-5.2-7.5-9.8V5.8z"/><circle cx="12" cy="10" r="2.3"/><path d="M8.3 16c.7-1.7 2.1-2.7 3.7-2.7s3 1 3.7 2.7"/></symbol>
     <symbol id="i-satellite" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.4"/><path d="M7.8 16.2a6 6 0 0 1 0-8.4M16.2 7.8a6 6 0 0 1 0 8.4M5 19a10 10 0 0 1 0-14M19 5a10 10 0 0 1 0 14"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M3.5 3.5l17 17"/><path d="M10 6a9.6 9.6 0 0 1 2-.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-2.6 3.3M6.6 6.9C4 8.6 2.5 12 2.5 12S6 18.5 12 18.5c1.6 0 3-.4 4.2-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
+    <symbol id="i-cookie" viewBox="0 0 24 24"><path d="M20.5 12.5A8.5 8.5 0 1 1 11.5 3.5a3 3 0 0 0 3.5 3.5 3 3 0 0 0 3.5 3.5 2.5 2.5 0 0 0 2 2z"/><path d="M8.5 10h.01M9.5 15h.01M14 14.5h.01" stroke-width="2.6"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3.2"/><path d="M3.5 19c.8-3 3-4.7 5.5-4.7s4.7 1.7 5.5 4.7"/><path d="M15.5 5.6a3 3 0 0 1 0 5.8M17.5 14.6c1.5.6 2.6 2 3 4.4"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21.5s-7-6.1-7-11.5a7 7 0 0 1 14 0c0 5.4-7 11.5-7 11.5z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r=".6" fill="currentColor"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4.5 19.5l1-4L15.8 5.2a2 2 0 0 1 2.9 0l.1.1a2 2 0 0 1 0 2.9L8.5 18.5z"/><path d="M13.5 7.5l3 3"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M14 4.5H6.5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2H14"/><path d="M10 12h10M16.5 8.5L20 12l-3.5 3.5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2.8l7.5 3v5.6c0 4.6-3.2 8.6-7.5 9.8-4.3-1.2-7.5-5.2-7.5-9.8V5.8z"/><path d="M8.8 12l2.2 2.2 4.4-4.4"/></symbol>
+    <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M5 19c0-8 5-13.5 15-14-.3 9.5-5.6 15-13 15"/><path d="M5 19c2.5-4 5.5-6.5 9-8"/></symbol>
   </defs>
 </svg>
 
-<!-- ================= sign in ================= -->
-<div id="auth" class="authScreen">
+<!-- ================= splash while the app starts ================= -->
+<div id="splash" aria-hidden="true">
+  <img src="brand/addy-logo-light.png" alt="" width="600" height="514">
+  <div class="splashBar"><i></i></div>
+</div>
+
+<!-- ================= sign in / first-run setup / first password ================= -->
+<div id="auth" class="authScreen" hidden>
   <aside class="authBrand">
     <img class="authLogo" src="brand/addy-logo-light.png" alt="Addy" width="600" height="514">
     <div class="authPitch">
+      <span class="eyebrow">GIS field platform</span>
       <h1>Field data collection and ground truthing</h1>
-      <ul>
-        <li>Collect classified ground points for training</li>
-        <li>Navigate to validation points and verify them</li>
-        <li>Works without signal; syncs when connected</li>
+      <ul class="authFeatures">
+        <li><span class="fIcon"><svg class="ic"><use href="#i-pin-plus"/></svg></span><span><b>Collect training samples</b><small>Classified ground points with averaged GPS fixes and photos</small></span></li>
+        <li><span class="fIcon"><svg class="ic"><use href="#i-nearest"/></svg></span><span><b>Navigate and verify</b><small>Arrow, distance alarm and road routing to each validation point</small></span></li>
+        <li><span class="fIcon"><svg class="ic"><use href="#i-sync"/></svg></span><span><b>Works without signal</b><small>Everything is saved on the device and syncs when you are back online</small></span></li>
       </ul>
     </div>
-    <p class="authFine">Points are stored on your team's own server.</p>
+    <p class="authFine"><svg class="ic sm"><use href="#i-shield"/></svg>Points are stored on your team's own server.</p>
   </aside>
   <main class="authMain">
-    <form class="authForm" id="authForm" autocomplete="on">
+    <form class="authForm" id="authForm" autocomplete="on" novalidate>
+      <ol class="steps" id="authSteps" hidden aria-label="Setup steps">
+        <li class="on"><i>1</i>Admin account</li>
+        <li><i>2</i>First project</li>
+      </ol>
       <h2 id="authHeading">Sign in</h2>
       <p class="muted" id="authIntro">Sign in with the account your team admin gave you.</p>
-      <label class="field" id="authNameRow" hidden><span>Full name</span><input id="authName" autocomplete="name" maxlength="80"></label>
-      <label class="field"><span>Username</span><input id="authUser" autocomplete="username" required maxlength="40" autocapitalize="none" spellcheck="false"></label>
-      <label class="field"><span>Password</span><input id="authPass" type="password" autocomplete="current-password" required minlength="6"></label>
-      <label class="field" id="authPass2Row" hidden><span>Repeat password</span><input id="authPass2" type="password" autocomplete="new-password" minlength="6"></label>
+      <div class="callout" id="authCallout" hidden></div>
+      <div class="field" id="authNameRow" hidden><label for="authName">Full name</label><input id="authName" autocomplete="name" maxlength="80" placeholder="e.g. Ama Mensah"></div>
+      <div class="field" id="authUserRow"><label for="authUser">Username</label><input id="authUser" autocomplete="username" maxlength="40" autocapitalize="none" spellcheck="false"></div>
+      <div class="field" id="authCurRow" hidden><label for="authCur">Temporary password</label>
+        <div class="pwWrap"><input id="authCur" type="password" autocomplete="current-password"><button type="button" class="pwEye" data-eye="authCur" aria-label="Show password"><svg class="ic sm"><use href="#i-eye"/></svg></button></div></div>
+      <div class="field" id="authPassRow"><label for="authPass" id="authPassLbl">Password</label>
+        <div class="pwWrap"><input id="authPass" type="password" autocomplete="current-password"><button type="button" class="pwEye" data-eye="authPass" aria-label="Show password"><svg class="ic sm"><use href="#i-eye"/></svg></button></div>
+        <div class="pwMeter" id="pwMeter" data-s="0" hidden><span class="pwBars"><i></i><i></i><i></i><i></i></span><small id="pwMeterTxt"></small></div></div>
+      <div class="field" id="authPass2Row" hidden><label for="authPass2">Repeat password</label><input id="authPass2" type="password" autocomplete="new-password"></div>
+      <label class="check" id="authRememberRow"><input type="checkbox" id="authRemember" checked><span>Keep me signed in on this device</span></label>
       <p class="err" id="authErr" role="alert"></p>
-      <button class="btn primary block" id="authBtn" type="submit">Sign in</button>
-      <p class="muted small" id="authFoot"></p>
+      <button class="btn primary block lg" id="authBtn" type="submit"><span class="spinner" aria-hidden="true"></span><span id="authBtnTxt">Sign in</span></button>
+      <p class="muted small authFoot" id="authFoot"></p>
     </form>
+    <div class="cookieNote" id="cookieNote" role="region" aria-label="Cookies" hidden>
+      <span class="cookieIc"><svg class="ic"><use href="#i-cookie"/></svg></span>
+      <p><b>We use one cookie</b>It keeps you signed in. It is essential, set only by your team server, and never used for tracking or ads.</p>
+      <button class="btn sm primary" id="cookieOk" type="button">Got it</button>
+    </div>
   </main>
+</div>
+
+<!-- ================= projects hub ================= -->
+<div id="hub" class="hub" hidden>
+  <header class="hubBar">
+    <img class="hubLogo" src="brand/addy-logo-light.png" alt="Addy" width="600" height="514">
+    <span class="grow"></span>
+    <div class="hubUser"><span class="av" id="hubAv"></span><span class="hubWho"><b id="hubUName"></b><small id="hubURole"></small></span></div>
+    <button class="hubBarBtn" id="hubTeam" type="button" hidden title="Manage team"><svg class="ic"><use href="#i-users"/></svg><span>Team</span></button>
+    <button class="hubBarBtn" id="hubSignOut" type="button" title="Sign out"><svg class="ic"><use href="#i-logout"/></svg><span>Sign out</span></button>
+  </header>
+  <div class="hubScroll">
+    <div class="hubInner">
+      <section class="hubHero">
+        <div class="hubHeroText">
+          <p class="eyebrow" id="hubDate"></p>
+          <h1 id="hubGreet">Projects</h1>
+          <p class="hubSub" id="hubSub"></p>
+        </div>
+        <div class="hubHeroActions">
+          <button class="btn ghost onTint" id="hubBack" type="button" hidden><svg class="ic sm"><use href="#i-x"/></svg>Back to map</button>
+          <button class="btn primary lg" id="hubNew" type="button"><svg class="ic sm"><use href="#i-plus"/></svg>New project</button>
+        </div>
+      </section>
+      <section class="hubStats" id="hubStats" aria-label="Summary"></section>
+      <div class="hubTools">
+        <div class="tabs" id="hubTabs" role="tablist" aria-label="Filter projects">
+          <button type="button" data-f="all" aria-pressed="true">All</button>
+          <button type="button" data-f="mine" aria-pressed="false">Created by me</button>
+          <button type="button" data-f="archived" aria-pressed="false">Archived</button>
+        </div>
+        <input type="search" id="hubQ" placeholder="Search projects" aria-label="Search projects">
+      </div>
+      <div class="projGrid" id="projGrid"></div>
+    </div>
+  </div>
 </div>
 
 <!-- ================= app bar ================= -->
@@ -94,6 +166,7 @@
 
 <!-- ================= navigation rail (desktop) / bottom bar (phone) ================= -->
 <nav id="tools" aria-label="Sections">
+  <button class="tool" id="hubBtn" type="button"><svg class="ic"><use href="#i-grid"/></svg><span>Projects</span></button>
   <button class="tool" id="listBtn" type="button"><svg class="ic"><use href="#i-list"/></svg><span id="listLbl">Points</span></button>
   <button class="tool" id="dataBtn" type="button"><svg class="ic"><use href="#i-data"/></svg><span>Data</span></button>
   <button class="tool" id="reportNavBtn" type="button"><svg class="ic"><use href="#i-report"/></svg><span>Report</span></button>
@@ -370,7 +443,7 @@
     </section>
     <section class="group">
       <div class="groupHead"><h3 class="groupTitle">Projects</h3>
-        <span class="btnGroup tight" id="projAdmin"><button class="btn sm" id="editProjBtn" type="button">Edit</button><button class="btn sm" id="newProjBtn" type="button"><svg class="ic sm"><use href="#i-plus"/></svg>New</button></span></div>
+        <span class="btnGroup tight" id="projAdmin"><button class="btn sm ghost" id="allProjBtn" type="button"><svg class="ic sm"><use href="#i-grid"/></svg>All</button><button class="btn sm" id="editProjBtn" type="button"><svg class="ic sm"><use href="#i-edit"/></svg>Edit</button><button class="btn sm" id="newProjBtn" type="button"><svg class="ic sm"><use href="#i-plus"/></svg>New</button></span></div>
       <div class="list boxed" id="projList"></div>
     </section>
     <section class="group">
@@ -409,6 +482,7 @@
       <div class="swatches" id="pSwatches"></div>
       <p class="muted small">Use the same integer codes as your classification so exports and the accuracy report line up. Renaming a class does not change points already saved.</p>
       <label class="check" id="pArchRow" hidden><input type="checkbox" id="pArchived"><span>Archived (hidden from collectors)</span></label>
+      <p class="callout small" id="pOwnerNote" hidden>You will own this project: you and your team's managers and admins can edit it. Everyone on the team can open it and collect points.</p>
     </section>
     <p class="err" id="pErr" role="alert"></p>
   </div>
@@ -445,7 +519,7 @@
 </section>
 
 <!-- ================= dialog ================= -->
-<div id="dlg" class="modal" hidden>
+<div id="dlg" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="dlgTitle">
   <form class="modalCard" id="dlgForm">
     <h2 id="dlgTitle"></h2>
     <p class="muted" id="dlgText"></p>

@@ -107,6 +107,10 @@ async function openSqlite(dataDir) {
   const file = path.join(dataDir, 'addy.db');
   const db = new DatabaseSync(file);
   db.exec(SQLITE_SCHEMA);
+  // columns added after the first release
+  const cols = new Set(db.prepare(`PRAGMA table_info(users)`).all().map(c => c.name));
+  if (!cols.has('must_change')) db.exec(`ALTER TABLE users ADD COLUMN must_change INTEGER NOT NULL DEFAULT 0`);
+  if (!cols.has('last_login')) db.exec(`ALTER TABLE users ADD COLUMN last_login TEXT`);
   const q = {
     get: async (sql, ...args) => db.prepare(sql).get(...args),
     all: async (sql, ...args) => db.prepare(sql).all(...args),
@@ -141,6 +145,8 @@ async function openPostgres(url) {
     run: async (sql, ...args) => { await c.query(toPg(sql), args); },
   });
   await pool.query(PG_SCHEMA);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TEXT;`);
   let host = 'PostgreSQL';
   try { host = new URL(url).host; } catch { /* keep the generic name */ }
   return {

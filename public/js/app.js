@@ -20,14 +20,16 @@ let toastT;
 function toast(msg, ms = 3200) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms); }
 
 // ================= state =================
-const APP_BUILD = '2026-11-22.7';
+const APP_BUILD = '2026-11-25.1';
 const SETTINGS_KEY = 'addy.settings', AUTH_KEY = 'addy.auth';
 const settings = Object.assign({ base: 'osm', labels: true, track: true, alert: true, arrive: 20, avgN: 10, mode: 'collect', lastProject: null, activeDs: {}, target: {}, travel: 'walk', onlineRoute: true, showRoads: false },
   JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'));
 const saveSettings = () => localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 
 const S = {
-  auth: JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'), // {token, user}
+  // {user} kept so the app opens offline. The session itself is an HttpOnly cookie the page cannot read.
+  // Older versions also stored {token}; it is sent once more as a Bearer header, the server moves it into the cookie, and it is dropped.
+  auth: JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'),
   online: navigator.onLine,
   projects: [],
   project: null,
@@ -52,54 +54,146 @@ const S = {
 };
 const user = () => S.auth && S.auth.user;
 const canManage = () => user() && user().role !== 'collector';
+// admins and managers edit any project; anyone else edits the ones they created (the server checks this too)
+const canEditProject = p => !!p && !!user() && (canManage() || p.created_by === user().id || p.can_edit === true);
+function saveAuth(u) {
+  S.auth = { user: u };
+  localStorage.setItem(AUTH_KEY, JSON.stringify(S.auth));
+}
+function clearAuth() { S.auth = null; localStorage.removeItem(AUTH_KEY); }
 
 // ================= API =================
 async function api(method, url, body) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (S.auth && S.auth.token) headers.Authorization = 'Bearer ' + S.auth.token;
+  // X-Addy marks the request as coming from this app; the server refuses cookie requests without it
+  const headers = { 'Content-Type': 'application/json', 'X-Addy': '1' };
+  const legacy = S.auth && S.auth.token;
+  if (legacy) headers.Authorization = 'Bearer ' + legacy;
   let r;
-  try { r = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, cache: 'no-store' }); }
+  try { r = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, cache: 'no-store', credentials: 'same-origin' }); }
   catch (e) { const err = new Error('No connection to the server.'); err.offline = true; throw err; }
   let j = null;
   try { j = await r.json(); } catch { /* non-JSON */ }
   if (!r.ok) { const e = new Error((j && j.error) || `Server error (${r.status})`); e.status = r.status; throw e; }
+  // the server has now put the old token into the session cookie
+  if (legacy && S.auth && S.auth.token === legacy) { delete S.auth.token; localStorage.setItem(AUTH_KEY, JSON.stringify(S.auth)); }
   return j;
 }
 
-// ================= sign in =================
-let authMode = 'login';
+// ================= reveal / hide with a transition =================
+// Elements start [hidden]; .show is added on the next frame so the CSS transition runs, and [hidden] returns after it ends.
+function reveal(el) {
+  if (!el) return;
+  clearTimeout(el._hideT);
+  el.hidden = false;
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('show')));
+}
+function conceal(el, ms = 220) {
+  if (!el || el.hidden) return;
+  el.classList.remove('show');
+  clearTimeout(el._hideT);
+  el._hideT = setTimeout(() => { el.hidden = true; }, ms);
+}
+function hideSplash() { const s = $('#splash'); if (s && !s.classList.contains('gone')) { s.classList.add('gone'); setTimeout(() => s.remove(), 500); } }
+
+// ================= sign in, first-run setup, first password =================
+// login:  username + password.
+// setup:  the very first visit to a new server; creates the admin account (step 1 of 2; step 2 is the first project).
+// change: an account an admin created (or reset) must choose its own password at its first sign-in.
+let authMode = 'login', pendingPw = '';
 function showAuth(mode, msg) {
   authMode = mode;
-  $('#auth').hidden = false;
-  const setup = mode === 'setup';
-  $('#authNameRow').hidden = !setup; $('#authPass2Row').hidden = !setup;
-  $('#authPass').autocomplete = setup ? 'new-password' : 'current-password';
-  $('#authBtn').textContent = setup ? 'Create admin account' : 'Sign in';
-  $('#authHeading').textContent = setup ? 'Set up Addy' : 'Sign in';
+  hideSplash();
+  conceal($('#hub'));
+  reveal($('#auth'));
+  const setup = mode === 'setup', change = mode === 'change';
+  const u = user();
+  $('#authSteps').hidden = !setup;
+  $('#authNameRow').hidden = !setup;
+  $('#authUserRow').hidden = change;
+  $('#authCurRow').hidden = !(change && !pendingPw);
+  $('#authPass2Row').hidden = !(setup || change);
+  $('#pwMeter').hidden = !(setup || change);
+  $('#authRememberRow').hidden = change;
+  $('#authPass').autocomplete = setup || change ? 'new-password' : 'current-password';
+  $('#authPassLbl').textContent = change ? 'New password' : 'Password';
+  $('#authBtnTxt').textContent = setup ? 'Create admin account' : change ? 'Save password and continue' : 'Sign in';
+  $('#authHeading').textContent = setup ? 'Welcome to Addy' : change ? `Welcome${u ? ', ' + u.name.split(' ')[0] : ''}` : 'Welcome back';
   $('#authIntro').textContent = setup
-    ? 'First run: create the admin account for your team. You can add collectors and managers afterwards from Menu → Manage team.'
-    : 'Sign in with the account your team admin gave you.';
-  $('#authFoot').textContent = setup ? '' : 'No account? Ask your project admin to add you.';
+    ? 'This server is new. Create the administrator account for your team to get started.'
+    : change ? 'This is your first sign-in. Choose your own password to replace the temporary one your admin gave you.'
+      : 'Sign in with the account your team admin gave you.';
+  const callout = $('#authCallout');
+  callout.hidden = !setup;
+  callout.innerHTML = setup ? '<svg class="ic sm"><use href="#i-shield"/></svg><span>You are the first person here, so this account becomes the <b>admin</b>. You can then add collectors and managers, and anyone on the team can create projects.</span>' : '';
+  $('#authFoot').textContent = setup || change ? '' : 'No account? Ask your project admin to add you.';
   $('#authErr').textContent = msg || '';
-  setTimeout(() => (setup ? $('#authName') : $('#authUser')).focus(), 50);
+  $('#authPass').value = $('#authPass2').value = $('#authCur').value = '';
+  pwMeter();
+  if (!localStorage.getItem('addy.cookieOk')) reveal($('#cookieNote'));
+  setTimeout(() => (setup ? $('#authName') : change ? (pendingPw ? $('#authPass') : $('#authCur')) : $('#authUser')).focus(), 80);
 }
+function hideAuth() { conceal($('#auth'), 320); conceal($('#cookieNote')); }
+
+// password strength: length and variety, shown as four bars
+function pwScore(pw) {
+  if (!pw) return 0;
+  let s = pw.length >= 6 ? 1 : 0;
+  if (pw.length >= 10) s++;
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) s++;
+  if (/\d/.test(pw) && /[^A-Za-z0-9]/.test(pw)) s++;
+  else if (/\d|[^A-Za-z0-9]/.test(pw) && pw.length >= 12) s++;
+  return Math.min(4, s);
+}
+function pwMeter() {
+  const pw = $('#authPass').value, s = pwScore(pw);
+  $('#pwMeter').dataset.s = String(s);
+  $('#pwMeterTxt').textContent = !pw ? 'At least 6 characters' : pw.length < 6 ? 'Too short' : ['Too short', 'Weak', 'Fair', 'Good', 'Strong'][s];
+}
+$('#authPass').addEventListener('input', pwMeter);
+$$('.pwEye').forEach(b => b.addEventListener('click', () => {
+  const i = $('#' + b.dataset.eye), show = i.type === 'password';
+  i.type = show ? 'text' : 'password';
+  b.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+  b.querySelector('use').setAttribute('href', show ? '#i-eye-off' : '#i-eye');
+  i.focus();
+}));
+$('#cookieOk').addEventListener('click', () => { localStorage.setItem('addy.cookieOk', '1'); conceal($('#cookieNote')); });
+
+function setAuthBusy(on) { $('#authBtn').disabled = on; $('#authBtn').classList.toggle('busy', on); }
 $('#authForm').addEventListener('submit', async e => {
   e.preventDefault();
-  const username = $('#authUser').value.trim(), password = $('#authPass').value;
+  const username = $('#authUser').value.trim(), password = $('#authPass').value, remember = $('#authRemember').checked;
+  const fail = (msg, el) => { $('#authErr').textContent = msg; $('#authForm').classList.remove('shake'); void $('#authForm').offsetWidth; $('#authForm').classList.add('shake'); if (el) el.focus(); };
   $('#authErr').textContent = '';
-  if (authMode === 'setup' && password !== $('#authPass2').value) { $('#authErr').textContent = 'The two passwords do not match.'; return; }
-  $('#authBtn').disabled = true;
+  if (authMode === 'setup' && !$('#authName').value.trim()) return fail('Enter your full name.', $('#authName'));
+  if (authMode !== 'change' && !username) return fail('Enter your username.', $('#authUser'));
+  if (authMode === 'setup' && !/^[A-Za-z0-9._-]{2,40}$/.test(username)) return fail('Username: 2–40 letters, numbers, dot, dash or underscore (no spaces).', $('#authUser'));
+  if (!password) return fail('Enter a password.', $('#authPass'));
+  if ((authMode === 'setup' || authMode === 'change') && password.length < 6) return fail('Password must be at least 6 characters.', $('#authPass'));
+  if ((authMode === 'setup' || authMode === 'change') && password !== $('#authPass2').value) return fail('The two passwords do not match.', $('#authPass2'));
+  setAuthBusy(true);
   try {
+    if (authMode === 'change') {
+      const current = pendingPw || $('#authCur').value;
+      const r = await api('POST', '/api/me/password', { current, next: password });
+      pendingPw = '';
+      saveAuth(r.user);
+      hideAuth();
+      toast('Password saved. Welcome to Addy.');
+      await afterLogin({ fresh: true });
+      return;
+    }
     const r = authMode === 'setup'
-      ? await api('POST', '/api/setup', { name: $('#authName').value.trim(), username, password })
-      : await api('POST', '/api/login', { username, password });
-    S.auth = r; localStorage.setItem(AUTH_KEY, JSON.stringify(r));
-    $('#authPass').value = $('#authPass2').value = '';
-    $('#auth').hidden = true;
-    await afterLogin();
+      ? await api('POST', '/api/setup', { name: $('#authName').value.trim(), username, password, remember })
+      : await api('POST', '/api/login', { username, password, remember });
+    saveAuth(r.user);
+    if (r.user.must_change) { pendingPw = password; showAuth('change'); return; }
+    const wasSetup = authMode === 'setup';
+    hideAuth();
+    await afterLogin({ fresh: true, firstRun: wasSetup });
   } catch (err) {
-    $('#authErr').textContent = err.offline ? 'Cannot reach the server. Connect to the internet or your team Wi-Fi to sign in the first time.' : err.message;
-  } finally { $('#authBtn').disabled = false; }
+    fail(err.offline ? 'Cannot reach the server. Connect to the internet or your team Wi-Fi to sign in the first time.' : err.message);
+  } finally { setAuthBusy(false); $('#authPass').value = $('#authPass2').value = ''; pwMeter(); }
 });
 
 async function logout() {
@@ -109,7 +203,7 @@ async function logout() {
     if (!ok) return;
   }
   try { await api('POST', '/api/logout'); } catch { /* offline is fine */ }
-  S.auth = null; localStorage.removeItem(AUTH_KEY);
+  clearAuth();
   closeSheets();
   location.reload();
 }
@@ -126,9 +220,9 @@ function dialog({ title, text = '', fields = [], okText = 'OK', cancelText = 'Ca
       const i = document.createElement('input'); i.type = f.type || 'text'; i.id = 'dlg_' + f.id; i.value = f.value || ''; if (f.autocomplete) i.autocomplete = f.autocomplete;
       l.appendChild(i); box.appendChild(l);
     }
-    $('#dlg').hidden = false;
-    setTimeout(() => (box.querySelector('input') || $('#dlgOk')).focus(), 30);
-    const finish = v => { $('#dlg').hidden = true; $('#dlgForm').onsubmit = null; $('#dlgCancel').onclick = null; resolve(v); };
+    reveal($('#dlg'));
+    setTimeout(() => (box.querySelector('input') || $('#dlgOk')).focus(), 60);
+    const finish = v => { conceal($('#dlg'), 180); $('#dlgForm').onsubmit = null; $('#dlgCancel').onclick = null; resolve(v); };
     $('#dlgCancel').onclick = () => finish(null);
     $('#dlgForm').onsubmit = async e => {
       e.preventDefault();
@@ -1365,23 +1459,23 @@ function renderMenu() {
   $('#whoBox').innerHTML = `<div class="av">${esc((u.name || u.username).slice(0, 1).toUpperCase())}</div><div><b>${esc(u.name)}</b><small>${esc(u.username)} · ${esc(u.role)}${S.online ? '' : ' · offline'}</small></div>`;
   const pl = $('#projList'); pl.innerHTML = '';
   const vis = visibleProjects();
-  if (!vis.length) pl.innerHTML = `<p class="note">${canManage() ? 'No projects yet. Create one to start collecting.' : 'No projects yet. Ask a manager to create one.'}</p>`;
+  if (!vis.length) pl.innerHTML = '<p class="note">No projects yet. Create one to start collecting.</p>';
   for (const p of vis) {
     const row = document.createElement('button'); row.type = 'button'; row.className = 'itemRow' + (S.project && S.project.id === p.id ? ' active' : '');
-    row.style.cssText = 'border:0;border-bottom:1px solid var(--line);background:transparent;text-align:left;width:100%;cursor:pointer';
     row.innerHTML = `<div class="grow"><b>${esc(p.name)}${p.archived ? ' <span class="pill">archived</span>' : ''}</b><small>${p.classes.length} classes${p.description ? ' · ' + esc(p.description.slice(0, 90)) : ''}</small></div>${S.project && S.project.id === p.id ? '<span class="pill ok">open</span>' : ''}`;
     row.onclick = () => { closeSheets(); if (!S.project || S.project.id !== p.id) openProject(p.id); };
     pl.appendChild(row);
   }
-  $('#projAdmin').hidden = !canManage();
-  $('#editProjBtn').hidden = !S.project;
+  $('#editProjBtn').hidden = !canEditProject(S.project);
   $('#teamBtn').hidden = u.role !== 'admin';
   $('#optLabels').checked = settings.labels; $('#optTrack').checked = settings.track; $('#optAlert').checked = settings.alert;
   $('#optArrive').value = String(settings.arrive); $('#optAvgN').value = String(settings.avgN);
   $('#optTravel').value = travel(); $('#optOnline').checked = !!settings.onlineRoute;
 }
 $('#menuBtn').addEventListener('click', () => toggleSection('#menuSheet', () => { renderMenu(); openSheet('#menuSheet'); }));
-$('#projBtn').addEventListener('click', () => { renderMenu(); openSheet('#menuSheet'); });
+$('#projBtn').addEventListener('click', () => openHub());
+$('#hubBtn').addEventListener('click', () => openHub());
+$('#allProjBtn').addEventListener('click', () => openHub());
 $$('#baseSeg button').forEach(b => b.addEventListener('click', () => setBase(b.dataset.v)));
 $('#optLabels').addEventListener('change', e => { settings.labels = e.target.checked; saveSettings(); labelVis(); });
 $('#optTrack').addEventListener('change', e => { settings.track = e.target.checked; saveSettings(); e.target.checked ? trackLine.addTo(map) : map.removeLayer(trackLine); });
@@ -1417,7 +1511,7 @@ $('#pwBtn').addEventListener('click', async () => {
     fields: [{ id: 'cur', label: 'Current password', type: 'password', autocomplete: 'current-password' }, { id: 'nw', label: 'New password (6+ characters)', type: 'password', autocomplete: 'new-password' }, { id: 'nw2', label: 'Repeat new password', type: 'password', autocomplete: 'new-password' }],
     validate: async v => {
       if (v.nw !== v.nw2) return 'The new passwords do not match.';
-      try { await api('POST', '/api/me/password', { current: v.cur, next: v.nw }); toast('Password changed.'); return null; } catch (e) { return e.message; }
+      try { const r = await api('POST', '/api/me/password', { current: v.cur, next: v.nw }); if (r.user) saveAuth(r.user); toast('Password changed. Other devices have been signed out.'); return null; } catch (e) { return e.message; }
     },
   });
 });
@@ -1432,8 +1526,11 @@ function openProjectEditor(p) {
   $('#pPreset').value = p ? '' : 'lulc';
   $('#pClasses').value = classText(p ? p.classes : toClasses(PRESETS.lulc.classes));
   $('#pArchRow').hidden = !p; $('#pArchived').checked = !!(p && p.archived);
+  $('#pOwnerNote').hidden = !!p;
+  $('#pSave').textContent = p ? 'Save changes' : 'Create project';
   $('#pErr').textContent = '';
   swatches(); openSheet('#projSheet');
+  if (!p) setTimeout(() => $('#pName').focus({ preventScroll: true }), 260);
 }
 function swatches() { $('#pSwatches').innerHTML = parseClassText($('#pClasses').value).map(c => `<span><i style="background:${esc(c.color)}"></i>${esc(c.code)} ${esc(c.name)}</span>`).join(''); }
 $('#pClasses').addEventListener('input', swatches);
@@ -1459,11 +1556,128 @@ $('#pSave').addEventListener('click', async () => {
     const r = editingProject ? await api('PATCH', '/api/projects/' + editingProject.id, body) : await api('POST', '/api/projects', body);
     await loadProjects();
     closeSheets();
-    if (!editingProject || (S.project && S.project.id === r.project.id)) await openProject(r.project.id);
-    toast(editingProject ? 'Project saved.' : `Project “${r.project.name}” created.`);
+    if (!editingProject) { closeHub(); await openProject(r.project.id); }
+    else if (S.project && S.project.id === r.project.id) await openProject(r.project.id);
+    if (!$('#hub').hidden) renderHub();
+    toast(editingProject ? 'Project saved.' : `Project “${r.project.name}” created. You can start collecting.`);
   } catch (e) { $('#pErr').textContent = e.offline ? 'Projects can only be created or edited with a connection to the server.' : e.message; }
   finally { $('#pSave').disabled = false; }
 });
+
+// ---------- projects hub ----------
+// The home screen: every project as a card with its figures, a search, and a button to start a new one.
+const initials = s => String(s || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+function ago(t) {
+  if (!t || !Number.isFinite(t)) return '';
+  const s = (Date.now() - t) / 1000;
+  if (s < 60) return 'just now';
+  const units = [[60, 'minute'], [24, 'hour'], [7, 'day'], [4.35, 'week'], [12, 'month'], [Infinity, 'year']];
+  let v = s / 60;
+  for (const [n, name] of units) { if (v < n) { const k = Math.floor(v); return `${k} ${name}${k === 1 ? '' : 's'} ago`; } v /= n; }
+  return '';
+}
+let hubFilter = 'all';
+function greeting() { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; }
+function renderHub() {
+  const u = user();
+  if (!u) return;
+  $('#hubAv').textContent = initials(u.name || u.username);
+  $('#hubUName').textContent = u.name;
+  $('#hubURole').textContent = u.role[0].toUpperCase() + u.role.slice(1) + (S.online ? '' : ' · offline');
+  $('#hubTeam').hidden = u.role !== 'admin';
+  $('#hubDate').textContent = new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+  $('#hubGreet').textContent = `${greeting()}, ${u.name.split(' ')[0]}`;
+  $('#hubBack').hidden = !S.project;
+  const all = visibleProjects();
+  const active = all.filter(p => !p.archived);
+  const tot = all.reduce((a, p) => { const s = p.stats || {}; a.points += s.points || 0; a.mine += s.mine || 0; a.datasets += s.datasets || 0; return a; }, { points: 0, mine: 0, datasets: 0 });
+  $('#hubSub').textContent = !all.length
+    ? 'Create your first project to start collecting ground points.'
+    : `${active.length} active project${active.length === 1 ? '' : 's'}. Pick one to open it on the map, or start a new one.`;
+  const stat = (ic, n, label) => `<div class="statCard"><span class="statIc"><svg class="ic"><use href="#${ic}"/></svg></span><span><b class="num">${n.toLocaleString()}</b><small>${label}</small></span></div>`;
+  $('#hubStats').innerHTML = all.length ? [
+    stat('i-grid', active.length, 'Active projects'),
+    stat('i-pin', tot.points, 'Points collected'),
+    stat('i-leaf', tot.mine, 'Collected by you'),
+    stat('i-target', tot.datasets, 'Validation datasets'),
+  ].join('') : '';
+  $('#hubStats').hidden = !all.length;
+  $$('#hubTabs button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.f === hubFilter)));
+  const q = norm($('#hubQ').value);
+  let list = all.filter(p => hubFilter === 'archived' ? p.archived : !p.archived);
+  if (hubFilter === 'mine') list = list.filter(p => p.created_by === u.id);
+  if (q) list = list.filter(p => norm(p.name + ' ' + p.description + ' ' + (p.created_by_name || '')).includes(q));
+  const grid = $('#projGrid'); grid.innerHTML = '';
+  if (!all.length) {
+    grid.innerHTML = `<div class="emptyState"><span class="emptyArt"><svg class="ic"><use href="#i-leaf"/></svg></span>
+      <h2>No projects yet</h2><p>A project holds a class list (for example land-cover classes), the points your team collects, and any validation datasets.</p>
+      <button class="btn primary lg" type="button" data-new><svg class="ic sm"><use href="#i-plus"/></svg>Create your first project</button></div>`;
+  } else if (!list.length) {
+    grid.innerHTML = `<div class="emptyState slim"><p>${q ? 'No projects match your search.' : hubFilter === 'archived' ? 'No archived projects.' : hubFilter === 'mine' ? 'You have not created a project yet.' : 'No active projects.'}</p></div>`;
+  }
+  list.forEach((p, i) => {
+    const s = p.stats || {};
+    const open = S.project && S.project.id === p.id;
+    const card = document.createElement('article');
+    card.className = 'projCard' + (open ? ' isOpen' : '') + (p.archived ? ' isArchived' : '');
+    card.style.setProperty('--i', String(Math.min(i, 12)));
+    const strip = p.classes.slice(0, 12).map(c => `<i style="background:${esc(c.color)}" title="${esc(c.name)}"></i>`).join('');
+    const when = s.last_activity ? 'Active ' + ago(s.last_activity) : 'Created ' + ago(Date.parse(p.created_at));
+    const mine = p.created_by === u.id;
+    card.innerHTML = `
+      <div class="pcStrip">${strip}</div>
+      <div class="pcBody">
+        <div class="pcHead">
+          <h3>${esc(p.name)}</h3>
+          ${open ? '<span class="badge ok">Open</span>' : ''}${p.archived ? '<span class="badge">Archived</span>' : ''}
+        </div>
+        ${p.created_by_name ? `<p class="pcBy">by ${mine ? 'you' : esc(p.created_by_name)}</p>` : ''}
+        <p class="pcDesc">${p.description ? esc(p.description) : '<span class="muted">No description</span>'}</p>
+        <div class="pcStats">
+          <span title="Points"><svg class="ic sm"><use href="#i-pin"/></svg><b class="num">${(s.points || 0).toLocaleString()}</b> points</span>
+          <span title="Validation datasets"><svg class="ic sm"><use href="#i-target"/></svg><b class="num">${s.datasets || 0}</b> datasets</span>
+          <span title="People who collected"><svg class="ic sm"><use href="#i-users"/></svg><b class="num">${s.people || 0}</b></span>
+        </div>
+      </div>
+      <footer class="pcFoot">
+        <span class="pcMeta"><svg class="ic sm"><use href="#i-clock"/></svg>${esc(when)}</span>
+        <span class="pcActions">
+          ${canEditProject(p) ? '<button class="iconBtn sm" type="button" data-edit aria-label="Edit project" title="Edit project"><svg class="ic sm"><use href="#i-edit"/></svg></button>' : ''}
+          <button class="btn sm ${open ? '' : 'primary'}" type="button" data-open>${open ? 'Back to map' : 'Open'}<svg class="ic sm"><use href="#i-arrow"/></svg></button>
+        </span>
+      </footer>`;
+    card.addEventListener('click', e => {
+      if (e.target.closest('[data-edit]')) { openProjectEditor(p); return; }
+      closeHub();
+      if (!open) openProject(p.id);
+    });
+    grid.appendChild(card);
+  });
+  grid.querySelectorAll('[data-new]').forEach(b => b.addEventListener('click', () => openProjectEditor(null)));
+}
+async function openHub() {
+  closeSheets();
+  document.body.classList.add('hub-open');
+  renderHub();
+  reveal($('#hub'));
+  $('#hubBtn').setAttribute('aria-current', 'true');
+  // refresh the figures in the background
+  try { await loadProjects(); if (!$('#hub').hidden) renderHub(); } catch { /* offline: cached list */ }
+}
+function closeHub() {
+  if ($('#hub').hidden) return;
+  if (!$('#projSheet').classList.contains('open')) closeSheets();
+  document.body.classList.remove('hub-open');
+  conceal($('#hub'), 260);
+  $('#hubBtn').removeAttribute('aria-current');
+  setTimeout(() => map.invalidateSize({ pan: false }), 280);
+}
+$('#hubNew').addEventListener('click', () => openProjectEditor(null));
+$('#hubBack').addEventListener('click', closeHub);
+$('#hubSignOut').addEventListener('click', logout);
+$('#hubTeam').addEventListener('click', () => { closeHub(); openAccounts(); });
+$('#hubQ').addEventListener('input', renderHub);
+$$('#hubTabs button').forEach(b => b.addEventListener('click', () => { hubFilter = b.dataset.f; renderHub(); }));
 
 // ---------- team ----------
 async function renderTeam() {
@@ -1473,7 +1687,8 @@ async function renderTeam() {
   box.innerHTML = '';
   for (const u of users) {
     const row = document.createElement('div'); row.className = 'itemRow';
-    row.innerHTML = `<div class="grow"><b>${esc(u.name)}${u.id === user().id ? ' (you)' : ''}${u.active ? '' : ' <span class="pill">disabled</span>'}</b><small>${esc(u.username)}</small></div>`;
+    const seen = u.must_change ? 'Not signed in yet' : u.last_login ? 'Last sign-in ' + ago(Date.parse(u.last_login)) : '';
+    row.innerHTML = `<span class="av sm">${esc(initials(u.name || u.username))}</span><div class="grow"><b>${esc(u.name)}${u.id === user().id ? ' (you)' : ''}${u.active ? '' : ' <span class="pill">disabled</span>'}</b><small>${esc(u.username)}${seen ? ' · ' + esc(seen) : ''}</small></div>`;
     const role = document.createElement('select'); role.setAttribute('aria-label', 'Role for ' + u.name); role.style.width = 'auto';
     role.innerHTML = ['collector', 'manager', 'admin'].map(r => `<option${r === u.role ? ' selected' : ''}>${r}</option>`).join('');
     role.onchange = async () => { try { await api('PATCH', '/api/users/' + u.id, { role: role.value }); toast('Role updated.'); } catch (e) { toast(e.message); } renderTeam(); };
@@ -1536,7 +1751,7 @@ $('#tAdd').addEventListener('click', async () => {
     // show the sign-in details once so the admin can pass them on
     const address = location.origin;
     const details = `Addy: ${address}\nUsername: ${username}\nPassword: ${password}\nRole: ${role}`;
-    const shown = dialog({ title: `Account created for ${name}`, text: 'Give them these sign-in details. The password is not shown again; they can change it under Settings → Change password.', okText: 'Copy details', cancelText: 'Done' });
+    const shown = dialog({ title: `Account created for ${name}`, text: 'Give them these sign-in details. The password is temporary: Addy asks them to choose their own the first time they sign in, and it is not shown again here.', okText: 'Copy details', cancelText: 'Done' });
     const box = document.createElement('div'); box.className = 'credBox'; box.textContent = details; $('#dlgFields').appendChild(box);
     if (await shown) { try { await navigator.clipboard.writeText(details); toast('Sign-in details copied.'); } catch { toast('Select the details and copy them manually.'); } }
   } catch (e) { $('#tErr').textContent = e.offline ? 'Creating accounts needs a connection to the server.' : e.message; }
@@ -1643,9 +1858,11 @@ async function sync(manual) {
     if (ds.length) await store.put('datasets', ds);
     await store.set('seq:' + pid, res.seq);
     let projChanged = false;
-    if (res.project && JSON.stringify(res.project) !== JSON.stringify(S.project)) {
+    // the sync reply carries the core project fields; keep the list's extras (stats, owner name)
+    const core = p => p && JSON.stringify([p.name, p.description, p.classes, p.archived, p.updated_at]);
+    if (res.project && core(res.project) !== core(S.project)) {
       projChanged = true;
-      S.project = res.project; S.projects = S.projects.map(p => p.id === pid ? res.project : p); await store.set('projects', S.projects);
+      S.project = { ...S.project, ...res.project }; S.projects = S.projects.map(p => p.id === pid ? S.project : p); await store.set('projects', S.projects);
       $('#projName').textContent = S.project.name;
     }
     if (S.dsId && !activeDs()) S.dsId = (liveDatasets()[0] || {}).id || null;
@@ -1667,18 +1884,22 @@ window.addEventListener('offline', () => { S.online = false; updateSyncChip(); }
 setInterval(() => { if (document.visibilityState === 'visible') sync(); }, 60000);
 
 // ================= boot =================
-async function afterLogin() {
+// fresh: the person has just signed in, so show the projects hub. Otherwise reopen the last project straight away (field use).
+// firstRun: the admin account was just created; step 2 of setup is the first project.
+async function afterLogin({ fresh = false, firstRun = false } = {}) {
   updateAdminBtn();
   try { await loadProjects(); }
-  catch (e) { if (e.status === 401) { S.auth = null; localStorage.removeItem(AUTH_KEY); showAuth('login', 'Please sign in again.'); return; } }
+  catch (e) { if (e.status === 401) { clearAuth(); showAuth('login', 'Please sign in again.'); return; } }
+  hideSplash();
   const vis = visibleProjects();
   const pick = vis.find(p => p.id === settings.lastProject) || vis.find(p => !p.archived);
+  if (pick && !fresh) { await openProject(pick.id); return; }
   if (pick) await openProject(pick.id);
-  else {
-    $('#projName').textContent = 'No project';
-    renderAll(false);
-    if (canManage()) { openProjectEditor(null); toast('Create your first project: name it and choose a class scheme.', 5000); }
-    else { renderMenu(); openSheet('#menuSheet'); }
+  else { $('#projName').textContent = 'No project'; renderAll(false); }
+  await openHub();
+  if (firstRun) {
+    openProjectEditor(null);
+    toast('Admin account ready. Step 2: name your first project and choose a class scheme.', 6000);
   }
 }
 
@@ -1689,19 +1910,21 @@ async function boot() {
   if (settings.track) trackLine.addTo(map);
   let status = null;
   try { status = await api('GET', '/api/status'); S.online = true; $('#appVersion').textContent = `Version ${status.version} · build ${APP_BUILD}`; } catch { S.online = false; }
-  if (!S.auth) {
-    if (status && status.needsSetup) showAuth('setup');
-    else showAuth('login', status ? '' : 'Cannot reach the server. Connect to sign in the first time.');
-    return;
-  }
+  if (status && status.needsSetup) { clearAuth(); showAuth('setup'); return; }
   if (S.online) {
-    try { const r = await api('GET', '/api/me'); S.auth.user = r.user; localStorage.setItem(AUTH_KEY, JSON.stringify(S.auth)); }
-    catch (e) { if (e.status === 401) { S.auth = null; localStorage.removeItem(AUTH_KEY); showAuth('login', 'Your session has ended. Please sign in again.'); return; } }
-  }
+    // the cookie decides whether we are signed in, whatever this device remembers
+    try { const r = await api('GET', '/api/me'); saveAuth(r.user); }
+    catch (e) {
+      if (e.status === 401) { const had = !!S.auth; clearAuth(); showAuth('login', had ? 'Your session has ended. Please sign in again.' : ''); return; }
+      if (!S.auth) { showAuth('login', 'Cannot reach the server. Connect to sign in the first time.'); return; }
+    }
+  } else if (!S.auth) { showAuth('login', 'Cannot reach the server. Connect to sign in the first time.'); return; }
+  if (user().must_change && S.online) { showAuth('change'); return; }
   $('#auth').hidden = true;
   await afterLogin();
+  hideSplash();
 }
-boot();
+boot().catch(e => { console.error(e); hideSplash(); toast('Addy could not start properly. Reload the page.'); });
 
 // Offline cache. Always re-check sw.js with the server, and reload once when a newer version takes over,
 // so phones pick up updates without having to clear anything.

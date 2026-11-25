@@ -12,11 +12,14 @@ Everything is saved on the phone first and syncs to your team server when there 
 You need Node.js 22.5 or newer (this computer has v24). Running it on one computer needs nothing installed (it uses a local SQLite file). To use a PostgreSQL database such as Neon, run `npm install` once.
 
 - Double-click **`Start Addy.bat`**, or run `npm start` in this folder.
-- Open http://localhost:8080. On first run you create the **admin** account.
-- Menu → **Manage team** to add people. Roles:
-  - **Collector**: records points and visits, and can edit only their own points.
-  - **Manager**: also creates and edits projects and class lists, uploads and removes validation datasets, and edits anyone's points.
+- Open http://localhost:8080. On a new server, the first screen is a two-step setup: (1) create the **admin** account, (2) create your first project.
+- After signing in you land on the **Projects** home: every project as a card with its point and dataset counts. Anyone can press **New project**; whoever creates a project can edit it.
+- **Team** (admin) adds people. A new account gets a temporary password; Addy asks the person to choose their own password the first time they sign in (the same happens after an admin resets a password). Roles:
+  - **Collector**: records points and visits, creates projects and edits the ones they created, and edits only their own points.
+  - **Manager**: also edits any project and class list, uploads and removes validation datasets, and edits anyone's points.
   - **Admin**: also adds people, resets passwords and disables accounts.
+
+**Sign-in cookie:** the session is kept in one essential cookie (`addy_session`: HttpOnly, SameSite=Lax, and Secure on HTTPS). With **Keep me signed in** ticked it lasts 30 days; otherwise it ends when the browser closes (and after 12 hours at most on the server). No tracking cookies are used. Devices signed in with an older version are moved to the cookie automatically.
 
 ### Phones (GPS needs HTTPS)
 
@@ -71,7 +74,7 @@ If `DATABASE_URL` is set, all team data is stored in that PostgreSQL database (f
 server.js            accounts, projects, sync API, static files
 database.js          storage: PostgreSQL when DATABASE_URL is set, otherwise SQLite
 make-cert.js         self-signed HTTPS certificate for phones on Wi-Fi
-public/index.html    app screens
+public/index.html    app screens: sign-in and setup, projects home, map and panels
 public/app.css       styles (light and dark)
 public/js/app.js     app logic
 public/js/geo.js     distance, bearing, WGS84 <-> UTM, fix averaging
